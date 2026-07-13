@@ -283,7 +283,7 @@ async def test_file_realtime_stream_without_repo_context_uses_remote_metadata(mo
             "authorization": authorization,
             "offline": offline,
         }
-        return proxy_files.RemoteFileMetadata(file_size=6, etag='"cdn-etag"')
+        return proxy_files.RemoteFileMetadata(file_size=6, etag='"cdn-etag"'), 200
 
     async def fake_file_chunk_get(**kwargs):
         captured["chunk_get"] = kwargs
@@ -316,7 +316,7 @@ async def test_file_realtime_stream_without_repo_context_uses_remote_metadata(mo
 @pytest.mark.asyncio
 async def test_file_realtime_stream_returns_proxy_timeout_when_metadata_lookup_fails(monkeypatch, tmp_path):
     async def fake_remote_file_metadata(*args, **kwargs):
-        return None
+        return None, None
 
     monkeypatch.setattr(proxy_files, "_remote_file_metadata", fake_remote_file_metadata)
 
@@ -334,6 +334,68 @@ async def test_file_realtime_stream_returns_proxy_timeout_when_metadata_lookup_f
     assert result.status_code == 504
     assert result.headers["x-error-code"] == "ProxyTimeout"
     assert body == [b""]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "upstream_status, expected_status, expected_error_code",
+    [(404, 404, "EntryNotFound"), (401, 401, None), (403, 403, None)],
+)
+async def test_file_realtime_stream_passes_through_upstream_client_errors(
+    monkeypatch, tmp_path, upstream_status, expected_status, expected_error_code
+):
+    async def fake_remote_file_metadata(*args, **kwargs):
+        return None, upstream_status
+
+    monkeypatch.setattr(proxy_files, "_remote_file_metadata", fake_remote_file_metadata)
+
+    result = await proxy_files._file_realtime_stream(
+        app=_make_app(tmp_path),
+        save_path=str(tmp_path / "save"),
+        head_path=str(tmp_path / "head"),
+        url="https://mirror.example/team/demo/hash.bin",
+        request=_make_request("GET", headers={"host": "mirror.example"}),
+        method="GET",
+        allow_cache=False,
+    )
+
+    assert result.status_code == expected_status
+    if expected_error_code is not None:
+        assert result.headers["x-error-code"] == expected_error_code
+
+
+@pytest.mark.asyncio
+async def test_file_realtime_stream_uses_pathsinfo_for_canonical_repo(monkeypatch, tmp_path):
+    async def fail_remote_file_metadata(*args, **kwargs):
+        raise AssertionError("canonical repos should use the pathsinfo branch")
+
+    async def empty_pathsinfo(*args, **kwargs):
+        return ProxyResult(
+            status_code=200,
+            headers={"content-type": "application/json"},
+            body=single_chunk_body("[]"),
+        )
+
+    monkeypatch.setattr(proxy_files, "_remote_file_metadata", fail_remote_file_metadata)
+    monkeypatch.setattr(proxy_files, "pathsinfo_generator", empty_pathsinfo)
+
+    result = await proxy_files._file_realtime_stream(
+        app=_make_app(tmp_path),
+        repo_type="models",
+        org=None,
+        repo="xlm-roberta-base",
+        file_path="missing.bin",
+        save_path=str(tmp_path / "save"),
+        head_path=str(tmp_path / "head"),
+        url="http://localhost/missing.bin",
+        request=_make_request(),
+        method="GET",
+        allow_cache=True,
+        commit="main",
+    )
+
+    assert result.status_code == 404
+    assert result.headers["x-error-code"] == "EntryNotFound"
 
 
 @pytest.mark.asyncio
@@ -661,7 +723,7 @@ async def test_remote_file_metadata_returns_none_on_http_errors(monkeypatch):
 
     monkeypatch.setattr(proxy_files.httpx, "AsyncClient", FakeAsyncClient)
 
-    metadata = await proxy_files._remote_file_metadata(
+    metadata, upstream_status = await proxy_files._remote_file_metadata(
         app=None,
         hf_url="https://remote/file",
         authorization=None,
@@ -669,6 +731,32 @@ async def test_remote_file_metadata_returns_none_on_http_errors(monkeypatch):
     )
 
     assert metadata is None
+    assert upstream_status is None
+
+
+@pytest.mark.asyncio
+async def test_remote_file_metadata_reports_upstream_status_on_error_response(monkeypatch):
+    class FakeAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def request(self, *args, **kwargs):
+            return SimpleNamespace(status_code=404, headers={})
+
+    monkeypatch.setattr(proxy_files.httpx, "AsyncClient", FakeAsyncClient)
+
+    metadata, upstream_status = await proxy_files._remote_file_metadata(
+        app=None,
+        hf_url="https://remote/file",
+        authorization=None,
+        offline=False,
+    )
+
+    assert metadata is None
+    assert upstream_status == 404
 
 
 @pytest.mark.asyncio
