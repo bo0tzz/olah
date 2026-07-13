@@ -11,7 +11,7 @@ import json
 import os
 from dataclasses import dataclass
 from typing import AsyncIterator, Dict, List, Literal, Optional, Tuple
-from fastapi import Request
+from fastapi import Request, Response
 import httpx
 from urllib.parse import urlparse, urljoin
 
@@ -430,10 +430,14 @@ async def _remote_file_metadata(
     hf_url: str,
     authorization: Optional[str],
     offline: bool,
-) -> Optional[RemoteFileMetadata]:
+) -> Tuple[Optional[RemoteFileMetadata], Optional[int]]:
+    """Fetch file metadata from the remote. Returns (metadata, upstream status code).
+
+    The status code is None when no upstream response was received (network error).
+    """
     if offline:
         etag = await _resource_etag(hf_url=hf_url, authorization=authorization, offline=True)
-        return RemoteFileMetadata(file_size=0, etag=etag)
+        return RemoteFileMetadata(file_size=0, etag=etag), None
 
     headers = {}
     if authorization is not None:
@@ -448,18 +452,18 @@ async def _remote_file_metadata(
                 follow_redirects=True,
             )
     except (httpx.HTTPError, ValueError):
-        return None
+        return None, None
     if response.status_code >= 400:
-        return None
+        return None, response.status_code
 
     content_length = response.headers.get("content-length")
     if content_length is None:
-        return None
+        return None, response.status_code
     try:
         file_size = int(content_length)
     except ValueError:
-        return None
-    return RemoteFileMetadata(file_size=file_size, etag=response.headers.get("etag"))
+        return None, response.status_code
+    return RemoteFileMetadata(file_size=file_size, etag=response.headers.get("etag")), response.status_code
 
 async def _file_realtime_stream(
     app,
@@ -511,7 +515,7 @@ async def _file_realtime_stream(
         request_headers["host"] = urlparse(hf_url).netloc
 
     authorization = request.headers.get("authorization", None)
-    if repo_type is not None and org is not None and repo is not None and file_path is not None and commit is not None:
+    if repo_type is not None and repo is not None and file_path is not None and commit is not None:
         generator = await pathsinfo_generator(
             app,
             repo_type,
@@ -550,13 +554,17 @@ async def _file_realtime_stream(
             offline=app.state.app_settings.config.offline,
         )
     else:
-        metadata = await _remote_file_metadata(
+        metadata, upstream_status = await _remote_file_metadata(
             app=app,
             hf_url=hf_url,
             authorization=authorization,
             offline=app.state.app_settings.config.offline,
         )
         if metadata is None:
+            if upstream_status == 404:
+                return await error_result(error_entry_not_found())
+            if upstream_status in (401, 403):
+                return await error_result(Response(status_code=upstream_status))
             return await error_result(error_proxy_timeout())
         file_size = metadata.file_size
         etag = metadata.etag
