@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - dev
+      - main
     paths:
       - src/**
       - pyproject.toml
@@ -13,9 +14,9 @@ on:
   workflow_dispatch:
     inputs:
       git_ref:
-        description: Git ref to build from, such as dev or a commit SHA
+        description: Git ref to build from, such as main or a commit SHA
         required: true
-        default: dev
+        default: main
 
 permissions:
   contents: read
@@ -27,7 +28,7 @@ concurrency:
 
 jobs:
   build-and-push-docker-image:
-    name: Build source Docker image and push to registries
+    name: Build source Docker image and push to ghcr
     runs-on: ubuntu-latest
 
     steps:
@@ -42,12 +43,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -57,13 +52,12 @@ jobs:
 
       - name: Compute image tags
         env:
-          DOCKERHUB_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/olah
           GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/olah
         run: |
           SHORT_SHA="$(git rev-parse --short HEAD)"
-          TAGS="${DOCKERHUB_IMAGE}:sha-${SHORT_SHA}"$'\n'"${GHCR_IMAGE}:sha-${SHORT_SHA}"
+          TAGS="${GHCR_IMAGE}:sha-${SHORT_SHA}"
           if [[ "${{ github.event_name }}" == "push" ]]; then
-            TAGS="${TAGS}"$'\n'"${DOCKERHUB_IMAGE}:dev"$'\n'"${GHCR_IMAGE}:dev"
+            TAGS="${TAGS}"$'\n'"${GHCR_IMAGE}:${{ github.ref_name }}"
           fi
           {
             echo "IMAGE_TAGS<<EOF"
