@@ -297,7 +297,12 @@ async def get_commit_hf(
         return await get_commit_hf_offline(app, repo_type, org, repo, commit)
 
 
-@tenacity.retry(stop=tenacity.stop_after_attempt(3))
+@tenacity.retry(
+    stop=tenacity.stop_after_attempt(3),
+    wait=tenacity.wait_exponential(multiplier=0.5, max=2),
+    retry=tenacity.retry_if_result(lambda result: result is None),
+    retry_error_callback=lambda retry_state: None,
+)
 async def check_commit_hf(
     app,
     repo_type: Optional[Literal["models", "datasets", "spaces"]],
@@ -305,7 +310,7 @@ async def check_commit_hf(
     repo: str,
     commit: Optional[str] = None,
     authorization: Optional[str] = None,
-) -> bool:
+) -> Optional[bool]:
     """
     Checks the commit status of a repository in the Hugging Face ecosystem.
 
@@ -318,7 +323,9 @@ async def check_commit_hf(
         authorization: The authorization token (optional).
 
     Returns:
-        A boolean indicating if the commit is valid (status code 200 or 307) or not.
+        True if the commit is valid (status code 200 or 307), False if the
+        upstream rejected it (other non-5xx status), or None if the upstream
+        could not be reached (transport error or 5xx response).
 
     """
     org_repo = get_org_repo(org, repo)
@@ -345,5 +352,7 @@ async def check_commit_hf(
             )
             status_code = response.status_code
     except httpx.HTTPError:
-        return False
+        return None
+    if status_code >= 500:
+        return None
     return status_code in [200, 307]
