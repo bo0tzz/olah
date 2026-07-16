@@ -7,6 +7,7 @@
 
 import datetime
 import gzip
+import logging
 import os
 import glob
 import tenacity
@@ -16,6 +17,8 @@ from urllib.parse import urljoin
 import httpx
 from olah.constants import WORKER_API_TIMEOUT
 from olah.utils.cache_utils import read_cache_request
+
+logger = logging.getLogger(__name__)
 
 
 def _load_cached_json_payload(request_cache: Dict[str, Union[bytes, Dict[str, str], int]]) -> Dict:
@@ -344,6 +347,7 @@ async def check_commit_hf(
                 timeout=WORKER_API_TIMEOUT,
             )
             status_code = response.status_code
-    except httpx.HTTPError:
+    except httpx.HTTPError as e:
+        logger.warning("Upstream request failed while checking %s: %r", url, e)
         return False
     return status_code in [200, 307]
