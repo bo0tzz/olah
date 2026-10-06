@@ -4,10 +4,11 @@ from typing import Literal, Optional
 from fastapi.responses import Response
 
 from olah.constants import REPO_TYPES_MAPPING
-from olah.errors import error_page_not_found, error_proxy_timeout, error_repo_not_found
+from olah.errors import UpstreamRateLimited, error_page_not_found, error_proxy_timeout, error_repo_not_found
 from olah.utils.repo_utils import get_org_repo, parse_org_repo
 from olah.utils.repo_utils import check_commit_hf
 from olah.utils.rule_utils import check_proxy_rules_hf
+from olah.utils.rate_limit_fallback import is_offline, record_access, serve_from_cache_if_granted
 
 RepoType = Literal["models", "datasets", "spaces"]
 
@@ -52,18 +53,23 @@ async def ensure_repo_visibility(app, repo: RepoRef, authorization: Optional[str
     access_error = await ensure_repo_access(app, repo)
     if access_error is not None:
         return access_error
-    if app.state.app_settings.config.offline:
+    if is_offline(app):
         return None
-    repo_exists = await check_commit_hf(
-        app,
-        repo.repo_type,
-        repo.org,
-        repo.repo,
-        commit=None,
-        authorization=authorization,
-    )
+    try:
+        repo_exists = await check_commit_hf(
+            app,
+            repo.repo_type,
+            repo.org,
+            repo.repo,
+            commit=None,
+            authorization=authorization,
+        )
+    except UpstreamRateLimited as rate_limited:
+        serve_from_cache_if_granted(app, repo.repo_type, repo.org, repo.repo, authorization, rate_limited)
+        return None
     if repo_exists is None:
         return error_proxy_timeout()
     if not repo_exists:
         return error_repo_not_found()
+    record_access(app, repo.repo_type, repo.org, repo.repo, authorization)
     return None

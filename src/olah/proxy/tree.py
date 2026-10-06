@@ -17,6 +17,7 @@ from olah.utils.rule_utils import check_cache_rules_hf
 from olah.utils.repo_utils import get_org_repo
 from olah.proxy.api_proxy import proxy_api_request
 from olah.proxy.result import ProxyResult, single_chunk_body
+from olah.utils.rate_limit_fallback import is_offline
 
 
 async def _tree_cache_generator(save_path: str) -> ProxyResult:
@@ -61,7 +62,7 @@ async def tree_generator(
         f"/api/{repo_type}/{org_repo}/tree/{commit}/{path}",
     )
     # proxy
-    offline = app.state.app_settings.config.offline
+    offline = is_offline(app)
     if use_cache and (offline or not override_cache):
         return await _tree_cache_generator(save_path)
     if offline:

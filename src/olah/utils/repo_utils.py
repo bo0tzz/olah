@@ -20,6 +20,7 @@ import httpx
 from olah.constants import WORKER_API_TIMEOUT
 from olah.errors import raise_if_rate_limited
 from olah.utils.cache_utils import read_cache_request
+from olah.utils.rate_limit_fallback import is_offline, recorded_revision
 
 logger = logging.getLogger(__name__)
 
@@ -299,7 +300,7 @@ async def get_newest_commit_hf(
     url = urljoin(
         app.state.app_settings.config.hf_url_base(), f"/api/{repo_type}/{org_repo}"
     )
-    if app.state.app_settings.config.offline:
+    if is_offline(app):
         return await get_newest_commit_hf_offline(app, repo_type, org, repo)
     try:
         async with httpx.AsyncClient() as client:
@@ -352,7 +353,7 @@ async def get_commit_hf_offline(
     repos_path = app.state.app_settings.config.repos_path
     save_path = get_meta_save_path(repos_path, repo_type, org, repo, commit)
     if not os.path.exists(save_path):
-        return None
+        return recorded_revision(app, repo_type, org, repo, commit)
     try:
         request_cache = await read_cache_request(save_path)
         request_cache_json = _load_cached_json_payload(request_cache)
@@ -395,7 +396,7 @@ async def get_commit_hf(
         app.state.app_settings.config.hf_url_base(),
         f"/api/{repo_type}/{org_repo}/revision/{commit}",
     )
-    if app.state.app_settings.config.offline:
+    if is_offline(app):
         return await get_commit_hf_offline(app, repo_type, org, repo, commit)
     try:
         headers = {}

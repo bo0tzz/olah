@@ -38,6 +38,7 @@ from olah.utils.disk_utils import (
     evict_cache_to_limit,
 )
 from olah.utils.logging import build_logger
+from olah.utils.rate_limit_fallback import RateLimitFallbackMiddleware
 
 
 BASE_SETTINGS = False
@@ -141,6 +142,7 @@ templates = Jinja2Templates(directory=os.path.join(OLAH_CODE_DIR, "static"))
 app.state.templates = templates
 app.state.logger = None
 app.include_router(router)
+app.add_middleware(RateLimitFallbackMiddleware)
 
 
 class AppSettings(BaseSettings):

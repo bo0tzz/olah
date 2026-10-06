@@ -119,6 +119,7 @@ class OlahConfig(object):
 
         # accessibility
         self.offline = False
+        self.rate_limit_fallback_ttl = 24 * 60 * 60
         self.proxy = OlahRuleList.from_list(DEFAULT_PROXY_RULES)
         self.cache = OlahRuleList.from_list(DEFAULT_CACHE_RULES)
 
@@ -213,5 +214,8 @@ class OlahConfig(object):
         if "accessibility" in config:
             accessibility = config["accessibility"]
             self.offline = accessibility.get("offline", self.offline)
+            self.rate_limit_fallback_ttl = int(
+                accessibility.get("rate-limit-fallback-ttl", self.rate_limit_fallback_ttl)
+            )
             self.proxy = OlahRuleList.from_list(accessibility.get("proxy", DEFAULT_PROXY_RULES))
             self.cache = OlahRuleList.from_list(accessibility.get("cache", DEFAULT_CACHE_RULES))

@@ -167,6 +167,7 @@ The second section allows for accessibility restrictions:
 ```toml
 [accessibility]
 offline = false
+rate-limit-fallback-ttl = 86400
 
 [[accessibility.proxy]]
 repo = "cais/mmlu"
@@ -194,6 +195,7 @@ repo = "adept/fuyu-8b"
 allow = false
 ```
 - `offline`: Sets whether the Olah mirror site enters offline mode, no longer making requests to the Hugging Face official site for data updates. However, cached repositories can still be downloaded.
+- `rate-limit-fallback-ttl`: When Hugging Face rate-limits a request, serve it from the cache (as in offline mode) if Hugging Face granted the same token access to the repository within this many seconds. Defaults to 86400; `0` disables the fallback.
 - `proxy`: Determines if the repository can be accessed through a proxy. By default, all repositories are allowed. The `repo` field is used to match the repository name. Regular expressions and wildcards can be used by setting `use_re` to control whether to use regular expressions (default is to use wildcards). The `allow` field controls whether the repository is allowed to be proxied.
 - `cache`: Determines if the repository will be cached. By default, all repositories are allowed. The `repo` field is used to match the repository name. Regular expressions and wildcards can be used by setting `use_re` to control whether to use regular expressions (default is to use wildcards). The `allow` field controls whether the repository is allowed to be cached.
 

@@ -18,6 +18,7 @@ from olah.utils.repo_utils import get_org_repo
 from olah.utils.file_utils import make_dirs
 from olah.proxy.api_proxy import proxy_api_request
 from olah.proxy.result import ProxyResult, single_chunk_body
+from olah.utils.rate_limit_fallback import is_offline
 
 async def _meta_cache_generator(save_path: str) -> ProxyResult:
     cache_rq = await read_cache_request(save_path)
@@ -60,7 +61,7 @@ async def meta_generator(
         f"/api/{repo_type}/{org_repo}/revision/{commit}",
     )
     # proxy
-    offline = app.state.app_settings.config.offline
+    offline = is_offline(app)
     if use_cache and (offline or not override_cache):
         return await _meta_cache_generator(save_path)
     if offline:

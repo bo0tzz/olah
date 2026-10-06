@@ -20,6 +20,7 @@ from olah.utils.rule_utils import check_cache_rules_hf
 from olah.utils.repo_utils import get_org_repo
 from olah.utils.file_utils import make_dirs
 from olah.proxy.result import ProxyResult, single_chunk_body
+from olah.utils.rate_limit_fallback import is_offline
 
 
 async def _pathsinfo_cache(save_path: str) -> Tuple[int, Dict[str, str], bytes]:
@@ -100,7 +101,7 @@ async def pathsinfo_generator(
             f"/api/{repo_type}/{org_repo}/paths-info/{commit}",
         )
         # proxy
-        offline = app.state.app_settings.config.offline
+        offline = is_offline(app)
         if use_cache and (offline or not override_cache):
             status, response_headers, content = await _pathsinfo_cache(save_path)
         elif offline:

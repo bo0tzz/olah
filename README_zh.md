@@ -171,6 +171,7 @@ mirrors-path = ["./mirrors_dir"]
 
 [accessibility]
 offline = false
+rate-limit-fallback-ttl = 86400
 
 [[accessibility.proxy]]
 repo = "cais/mmlu"
@@ -198,6 +199,7 @@ repo = "adept/fuyu-8b"
 allow = false
 ```
 - offline: 设置Olah镜像站是否进入离线模式，不再向huggingface官方站点发出请求以进行数据更新，但已经缓存的仓库仍可以下载
+- rate-limit-fallback-ttl: 当huggingface对请求限流时，如果huggingface在该秒数内曾允许同一token访问该仓库，则（如离线模式一样）从缓存提供该请求。默认86400；设为`0`则关闭该功能
 - proxy: 用于设置该仓库是否可以被代理，默认全部允许，`repo`用于匹配仓库名字; 可使用正则表达式和通配符两种模式，`use_re`用于控制是否使用正则表达式，默认使用通配符; `allow`控制该规则的属性是允许代理还是不允许代理。
 - cache: 用于设置该仓库是否会被缓存，默认全部允许，`repo`用于匹配仓库名字; 可使用正则表达式和通配符两种模式，`use_re`用于控制是否使用正则表达式，默认使用通配符; `allow`控制该规则的属性是允许代理还是不允许缓存。
 
